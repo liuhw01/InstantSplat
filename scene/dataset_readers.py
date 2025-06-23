@@ -74,6 +74,11 @@ def getNerfppNorm(cam_info):
 def loadCameras(poses, viewpoint_stack):
 
     # load optimized poses
+        # R、T：位姿
+        # world_view_transform：世界 → 相机变换矩阵
+        # full_proj_transform：世界 → 像素的完整投影矩阵
+        # camera_center：相机在世界坐标下的位置
+        # 可能还有 projection_matrix（由相机内参计算）
     if poses.shape[0] == len(viewpoint_stack):
         for idx, cam in enumerate(viewpoint_stack):
             R = np.transpose(poses[idx][:3, :3])
