@@ -10,23 +10,30 @@ from icecream import ic
 ic(torch.cuda.is_available())  # Check if CUDA is available
 ic(torch.cuda.device_count())
 
+# 3. 导入 MASt3R 网络结构
 from mast3r.model import AsymmetricMASt3R
-from dust3r.image_pairs import make_pairs
-from dust3r.inference import inference
-from dust3r.utils.device import to_numpy
-from dust3r.utils.geometry import inv
-from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
+# 4. dust3r 的核心模块
+from dust3r.image_pairs import make_pairs              # 构造图像对
+from dust3r.inference import inference                 # 执行图像对推理，输出像素匹配关系
+from dust3r.utils.device import to_numpy               # tensor -> numpy
+from dust3r.utils.geometry import inv                  # 求逆矩阵
+from dust3r.cloud_opt import global_aligner, GlobalAlignerMode  # 全局点云对齐器
+
+# 5. 工具函数：保存 COLMAP 格式、图像加载、共视图 mask 等
 from utils.sfm_utils import (save_intrinsics, save_extrinsic, save_points3D, save_time, save_images_and_masks,
                              init_filestructure, get_sorted_image_files, split_train_test, load_images, compute_co_vis_masks)
-from utils.camera_utils import generate_interpolated_path
+from utils.camera_utils import generate_interpolated_path  # 插值生成测试视图位姿
 
 
 def main(source_path, model_path, ckpt_path, device, batch_size, image_size, schedule, lr, niter, 
          min_conf_thr, llffhold, n_views, co_vis_dsp, depth_thre, conf_aware_ranking=False, focal_avg=False, infer_video=False):
 
     # ---------------- (1) Load model and images ----------------  
+    # 6. 初始化文件目录结构，加载 MASt3R 模型
     save_path, sparse_0_path, sparse_1_path = init_filestructure(Path(source_path), n_views)
     model = AsymmetricMASt3R.from_pretrained(ckpt_path).to(device)
+
+    # 7. 加载图像路径与图像内容（resize）
     image_dir = Path(source_path) / 'images'
     image_files, image_suffix = get_sorted_image_files(image_dir)
     if infer_video:
@@ -38,6 +45,7 @@ def main(source_path, model_path, ckpt_path, device, batch_size, image_size, sch
     image_files = train_img_files
     images, org_imgs_shape = load_images(image_files, size=image_size)
 
+    # 8. 推理和三维重建
     start_time = time()
     print(f'>> Making pairs...')
     pairs = make_pairs(images, scene_graph='complete', prefilter=None, symmetrize=True)
@@ -48,6 +56,7 @@ def main(source_path, model_path, ckpt_path, device, batch_size, image_size, sch
     loss = scene.compute_global_alignment(init="mst", niter=300, schedule=schedule, lr=lr, focal_avg=args.focal_avg)
 
     # Extract scene information
+    # 9. 提取相机内参/外参、3D点、置信度等信息
     extrinsics_w2c = inv(to_numpy(scene.get_im_poses()))
     intrinsics = to_numpy(scene.get_intrinsics())
     focals = to_numpy(scene.get_focals())
@@ -57,7 +66,8 @@ def main(source_path, model_path, ckpt_path, device, batch_size, image_size, sch
     depthmaps = to_numpy(scene.im_depthmaps.detach().cpu().numpy())
     values = [param.detach().cpu().numpy() for param in scene.im_conf]
     confs = np.array(values)
-    
+
+    # 10. 是否根据置信度做排序（图像质量排序）
     if conf_aware_ranking:
         print(f'>> Confiden-aware Ranking...')
         avg_conf_scores = confs.mean(axis=(1, 2))
@@ -70,6 +80,7 @@ def main(source_path, model_path, ckpt_path, device, batch_size, image_size, sch
         print("Sorted indices:", sorted_conf_indices)
 
     # Calculate the co-visibility mask
+    # 11. 计算共视图 mask（基于深度一致性）
     print(f'>> Calculate the co-visibility mask...')
     if depth_thre > 0:
         overlapping_masks = compute_co_vis_masks(sorted_conf_indices, depthmaps, pts3d, intrinsics, extrinsics_w2c, imgs.shape, depth_threshold=depth_thre)
@@ -83,6 +94,7 @@ def main(source_path, model_path, ckpt_path, device, batch_size, image_size, sch
     save_time(model_path, '[1] coarse_init_TrainTime', Train_Time)
 
     # ---------------- (2) Interpolate training pose to get initial testing pose ----------------
+    # 12. 如果需要评估测试视图（非 infer_video），插值生成其初始相机位姿
     if not infer_video:
         n_train = len(train_img_files)
         n_test = len(test_img_files)
@@ -116,6 +128,7 @@ def main(source_path, model_path, ckpt_path, device, batch_size, image_size, sch
     # -----------------------------------------------------------------------------------------
 
     # Save results
+    # 13. 保存训练视图的 COLMAP 文件格式
     focals = np.repeat(focals[0], n_views)
     print(f'>> Saving results...')
     end_time = time()
