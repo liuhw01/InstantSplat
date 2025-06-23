@@ -46,6 +46,7 @@ run_on_gpu() {
     echo "======================================================="
 
     # (1) Co-visible Global Geometry Initialization
+    # 使用 DUSt3R 获取稠密 pointmap，初始化相机 pose、focal、稀疏点云等（等价于 SfM），DUSt3R 模块在此被调用
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Co-visible Global Geometry Initialization..."
     CUDA_VISIBLE_DEVICES=${GPU_ID} python -W ignore ./init_geo.py \
     -s ${SOURCE_PATH} \
@@ -59,6 +60,7 @@ run_on_gpu() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Co-visible Global Geometry Initialization completed. Log saved in ${MODEL_PATH}/01_init_geo.log"
  
     # (2) Train: jointly optimize pose
+    # 用于基于 photometric loss 联合优化 3D 高斯属性和相机外参
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting training..."
     CUDA_VISIBLE_DEVICES=${GPU_ID} python ./train.py \
     -s ${SOURCE_PATH} \
@@ -72,6 +74,7 @@ run_on_gpu() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Training completed. Log saved in ${MODEL_PATH}/02_train.log"
 
     # (3) Render-Video
+    # 渲染训练图像的视角或生成轨迹视角下的视频（Novel View Synthesis）
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting rendering training views..."
     CUDA_VISIBLE_DEVICES=${GPU_ID} python ./render.py \
     -s ${SOURCE_PATH} \
